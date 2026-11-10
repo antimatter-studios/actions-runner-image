@@ -10,6 +10,8 @@
 #   chore    the release binary
 #   pwsh     PowerShell's release tarball
 #   ntfs-3g  Ubuntu's packages, resolved by apt and unpacked with dpkg-deb
+#   pyyaml   the python3 yaml module rust-fs-core's ci-gate imports, the same
+#            way (python3-yaml, reached through PYTHONPATH)
 #   cc       zig cc, through cargo-zigbuild's wrapper, which rewrites the
 #            linker arguments rustc passes that zig does not take
 #
@@ -56,6 +58,7 @@ sha256_of() {
 
 added_paths=()
 added_library_paths=()
+added_python_paths=()
 
 add_path() {
     export PATH="$1:$PATH"
@@ -67,6 +70,12 @@ add_library_path() {
     export LD_LIBRARY_PATH="$1${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
     added_library_paths+=("$1")
     if [ -n "${GITHUB_ENV:-}" ]; then echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH" >> "$GITHUB_ENV"; fi
+}
+
+add_python_path() {
+    export PYTHONPATH="$1${PYTHONPATH:+:$PYTHONPATH}"
+    added_python_paths+=("$1")
+    if [ -n "${GITHUB_ENV:-}" ]; then echo "PYTHONPATH=$PYTHONPATH" >> "$GITHUB_ENV"; fi
 }
 
 have() { PATH="$PATH:/usr/sbin:/sbin" command -v "$1" >/dev/null 2>&1; }
@@ -120,6 +129,9 @@ activate_apt_tree() {
         for dir in "usr/lib/$arch-linux-gnu" "lib/$arch-linux-gnu" usr/lib lib; do
             if [ -d "$apt_tree/$dir" ]; then add_library_path "$apt_tree/$dir"; fi
         done
+        if [ -d "$apt_tree/usr/lib/python3/dist-packages" ]; then
+            add_python_path "$apt_tree/usr/lib/python3/dist-packages"
+        fi
     fi
 }
 
@@ -190,6 +202,15 @@ install_ntfs_3g() {
     user_apt ntfs-3g
 }
 
+install_pyyaml() {
+    python3 -c 'import yaml' >/dev/null 2>&1 && return
+    if [ "$os" != Linux ]; then
+        echo "install-user-tools: python3 has no yaml module; install PyYAML into $(command -v python3)'s environment" >&2
+        exit 1
+    fi
+    user_apt python3-yaml
+}
+
 install_cc() {
     have cc && return
     if [ "$os" != Linux ]; then echo "install-user-tools: no cc and no zig route on $os" >&2; exit 1; fi
@@ -221,6 +242,7 @@ for tool in "$@"; do
         chore)   install_chore ;;
         pwsh)    install_pwsh ;;
         ntfs-3g) install_ntfs_3g ;;
+        pyyaml)  install_pyyaml ;;
         cc)      install_cc ;;
         *) echo "install-user-tools: unknown tool '$tool'" >&2; exit 1 ;;
     esac
@@ -233,5 +255,8 @@ if [ -z "${GITHUB_PATH:-}" ]; then
     echo "  export PATH=\"$(joined "${added_paths[@]}"):\$PATH\"" >&2
     if [ "${#added_library_paths[@]}" -gt 0 ]; then
         echo "  export LD_LIBRARY_PATH=\"$(joined "${added_library_paths[@]}")\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}\"" >&2
+    fi
+    if [ "${#added_python_paths[@]}" -gt 0 ]; then
+        echo "  export PYTHONPATH=\"$(joined "${added_python_paths[@]}")\${PYTHONPATH:+:\$PYTHONPATH}\"" >&2
     fi
 fi

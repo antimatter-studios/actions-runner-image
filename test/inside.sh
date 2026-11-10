@@ -5,10 +5,11 @@ export GITHUB_PATH=$HOME/github_path GITHUB_ENV=$HOME/github_env
 : > "$GITHUB_PATH"; : > "$GITHUB_ENV"
 echo "== $(id -un); sudo: $(sudo -n true 2>&1 | head -1)"
 echo "== first run (cold)"
-time bash /work/install-user-tools.sh chore pwsh ntfs-3g cc
+time bash /work/install-user-tools.sh chore pwsh ntfs-3g pyyaml cc
 du -sh ~/.local/user-tools
 while read -r p; do PATH="$p:$PATH"; done < "$GITHUB_PATH"; set -a; . "$GITHUB_ENV"; set +a
 chore --version | head -1
+python3 -c "import yaml; print(\"yaml\", yaml.__version__)"
 pwsh -NoProfile -Command '"pwsh " + $PSVersionTable.PSVersion'
 for t in ntfsfix ntfsls ntfscat mkntfs; do printf '%s -> %s\n' "$t" "$(command -v $t)"; done
 cc --version | head -1
@@ -24,6 +25,6 @@ echo "== ntfs round trip"
 truncate -s 16M /tmp/v.img && mkntfs -q -F -f /tmp/v.img && ntfsls /tmp/v.img | head -3
 echo "== second run over the same directory (what a cache hit looks like)"
 : > "$GITHUB_PATH"; : > "$GITHUB_ENV"
-env -i HOME=$HOME PATH=/usr/local/bin:/usr/bin:/bin GITHUB_PATH=$GITHUB_PATH GITHUB_ENV=$GITHUB_ENV bash -c 'time bash /work/install-user-tools.sh chore pwsh ntfs-3g cc'
+env -i HOME=$HOME PATH=/usr/local/bin:/usr/bin:/bin GITHUB_PATH=$GITHUB_PATH GITHUB_ENV=$GITHUB_ENV bash -c 'time bash /work/install-user-tools.sh chore pwsh ntfs-3g pyyaml cc'
 cat "$GITHUB_PATH"
 echo ALL-OK
