@@ -199,7 +199,8 @@ install_cc() {
     # so only the first link after a version bump builds them.
     cat > "$bin/cc" <<EOF
 #!/bin/sh
-export CARGO_ZIGBUILD_ZIG_PATH="$zig_dir/zig"
+export CARGO_ZIGBUILD_ZIG_COMMAND="$zig_dir/zig"
+export CARGO_ZIGBUILD_ZIG_VERSION=$ZIG_VERSION
 export ZIG_GLOBAL_CACHE_DIR="$root/zig-cache"
 exec "$czb_dir/cargo-zigbuild" zig cc -- -target $arch-linux-gnu "\$@"
 EOF
