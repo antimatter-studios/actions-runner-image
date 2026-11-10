@@ -1,0 +1,14 @@
+name: user-tools test
+on:
+  push:
+    branches: [test/user-tools]
+permissions:
+  contents: read
+jobs:
+  inside-runner-image:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - run: |
+          docker run --rm --user runner --security-opt no-new-privileges \
+            -v "$PWD/test:/work:ro" ghcr.io/actions/actions-runner:2.338.2 bash /work/inside.sh
