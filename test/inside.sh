@@ -12,6 +12,7 @@ chore --version | head -1
 pwsh -NoProfile -Command '"pwsh " + $PSVersionTable.PSVersion'
 for t in ntfsfix ntfsls ntfscat mkntfs; do printf '%s -> %s\n' "$t" "$(command -v $t)"; done
 cc --version | head -1
+printf '#include <stdio.h>\nint main(void){puts("c ok");return 0;}\n' > /tmp/h.c && cc -o /tmp/h /tmp/h.c && /tmp/h
 echo "== rust link with zig cc"
 curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain 1.95.0 >/dev/null 2>&1
 . "$HOME/.cargo/env"

@@ -54,13 +54,18 @@ sha256_of() {
     esac
 }
 
+added_paths=()
+added_library_paths=()
+
 add_path() {
     export PATH="$1:$PATH"
+    added_paths+=("$1")
     if [ -n "${GITHUB_PATH:-}" ]; then echo "$1" >> "$GITHUB_PATH"; fi
 }
 
 add_library_path() {
     export LD_LIBRARY_PATH="$1${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+    added_library_paths+=("$1")
     if [ -n "${GITHUB_ENV:-}" ]; then echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH" >> "$GITHUB_ENV"; fi
 }
 
@@ -202,6 +207,9 @@ install_cc() {
 export CARGO_ZIGBUILD_ZIG_COMMAND="$zig_dir/zig"
 export CARGO_ZIGBUILD_ZIG_VERSION=$ZIG_VERSION
 export ZIG_GLOBAL_CACHE_DIR="$root/zig-cache"
+# cargo-zigbuild asks rustc which of rustc's linker arguments to rewrite. Called
+# without rustc around, there are none of those, and any version will do.
+command -v rustc >/dev/null 2>&1 || export CARGO_ZIGBUILD_RUSTC_VERSION=1.95.0
 exec "$czb_dir/cargo-zigbuild" zig cc -- -target $arch-linux-gnu "\$@"
 EOF
     chmod +x "$bin/cc"
@@ -217,3 +225,13 @@ for tool in "$@"; do
         *) echo "install-user-tools: unknown tool '$tool'" >&2; exit 1 ;;
     esac
 done
+
+# Outside CI nothing carries PATH on to the next command, so say what to add.
+if [ -z "${GITHUB_PATH:-}" ]; then
+    joined() { local IFS=:; echo "$*"; }
+    echo "install-user-tools: add to your shell profile:" >&2
+    echo "  export PATH=\"$(joined "${added_paths[@]}"):\$PATH\"" >&2
+    if [ "${#added_library_paths[@]}" -gt 0 ]; then
+        echo "  export LD_LIBRARY_PATH=\"$(joined "${added_library_paths[@]}")\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}\"" >&2
+    fi
+fi
