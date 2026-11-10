@@ -80,6 +80,31 @@ fetch() {
     fi
 }
 
+# untar_xz TARBALL DIR: unpack, dropping the top directory. The stock runner
+# image has no xz; Python's tarfile reads it.
+untar_xz() {
+    mkdir -p "$2"
+    if have xz; then
+        tar xJf "$1" -C "$2" --strip-components=1
+        return
+    fi
+    python3 - "$1" "$2" <<'PY_EOF'
+import sys, tarfile
+src, dest = sys.argv[1], sys.argv[2]
+with tarfile.open(src, "r:xz") as tar:
+    members = []
+    for m in tar.getmembers():
+        parts = m.name.split("/", 1)
+        if len(parts) < 2 or not parts[1]:
+            continue
+        m.name = parts[1]
+        if m.islnk():
+            m.linkname = m.linkname.split("/", 1)[-1]
+        members.append(m)
+    tar.extractall(dest, members=members, filter="data")
+PY_EOF
+}
+
 # What a restored cache holds goes back on PATH before anything is judged missing.
 activate_apt_tree() {
     local dir
@@ -166,11 +191,9 @@ install_cc() {
     local zig_dir="$root/opt/zig-$ZIG_VERSION" czb_dir="$root/opt/cargo-zigbuild-$CARGO_ZIGBUILD_VERSION"
     local tarball="$root/download.tar.xz"
     fetch "https://ziglang.org/download/$ZIG_VERSION/zig-$arch-linux-$ZIG_VERSION.tar.xz" zig "$tarball"
-    mkdir -p "$zig_dir"
-    tar xJf "$tarball" -C "$zig_dir" --strip-components=1
+    untar_xz "$tarball" "$zig_dir"
     fetch "https://github.com/rust-cross/cargo-zigbuild/releases/download/v$CARGO_ZIGBUILD_VERSION/cargo-zigbuild-$arch-unknown-linux-gnu.tar.xz" cargo-zigbuild "$tarball"
-    mkdir -p "$czb_dir"
-    tar xJf "$tarball" -C "$czb_dir" --strip-components=1
+    untar_xz "$tarball" "$czb_dir"
     rm -f "$tarball"
     # The zig cache (glibc stubs, compiler-rt) lives in the cached directory too,
     # so only the first link after a version bump builds them.
