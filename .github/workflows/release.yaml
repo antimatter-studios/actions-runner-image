@@ -31,16 +31,20 @@ jobs:
       - name: Image tag
         id: tag
         run: |
-          version=$(sed -n 's/^ARG RUNNER_VERSION=//p' Dockerfile)
+          version=$(sed -n 's#^FROM ghcr.io/actions/actions-runner:\([^@]*\)@.*#\1#p' Dockerfile)
+          test -n "$version"
           echo "tag=${version}-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
       - uses: docker/build-push-action@v6
+        id: build
         with:
           context: .
           platforms: linux/amd64
           push: ${{ github.event_name != 'pull_request' }}
           tags: |
             ${{ env.REGISTRY_IMAGE }}:${{ steps.tag.outputs.tag }}
-            ${{ env.REGISTRY_IMAGE }}:latest
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.description=ARC runner image with build tools, PowerShell and ntfs-3g
+      - name: Image reference for antimatter-vps
+        if: github.event_name != 'pull_request'
+        run: echo "${REGISTRY_IMAGE}:${{ steps.tag.outputs.tag }}@${{ steps.build.outputs.digest }}" | tee -a "$GITHUB_STEP_SUMMARY"
