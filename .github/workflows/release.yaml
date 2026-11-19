@@ -34,7 +34,7 @@ jobs:
           version=$(sed -n 's#^FROM ghcr.io/actions/actions-runner:\([^@]*\)@.*#\1#p' Dockerfile)
           test -n "$version"
           echo "tag=${version}-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         id: build
         with:
           context: .
