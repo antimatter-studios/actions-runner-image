@@ -12,7 +12,18 @@ not have it, so its outages cannot fail their `apt-get update`.
 
 Language toolchains (Go, Node, Rust, Helm) do not belong here: workflows use `setup-*` actions.
 
-The base image is pinned by tag and digest, and Dependabot bumps it. A pull request builds the
-image and runs its checks; every push to `main` publishes `<runner version>-<short sha>` and prints
-the reference with its digest in the run summary. antimatter-vps pins that reference, digest
-included, in `src/githubActionsRunners.ts`.
+The base image is pinned by tag and digest. A pull request builds the image and runs its checks;
+every push to `main` publishes `<runner version>-<short sha>` and prints the reference with its
+digest in the run summary. antimatter-vps pins that reference, digest included, in
+`src/githubActionsRunners.ts`.
+
+## Runner updates
+
+GitHub stops sending jobs to a self-hosted runner some weeks after a newer actions/runner release.
+`runner-update.yaml` runs daily: when a release is newer than the `FROM` line, it pushes
+`runner-update/<version>`, starts the build on that branch (a build off `main` publishes nothing)
+and opens a PR. Dependabot also bumps the base image, weekly.
+
+It uses only `GITHUB_TOKEN`. Opening the PR needs *Allow GitHub Actions to create and approve pull
+requests* in the organization and repository Actions settings; without it the run fails after
+pushing the branch.
