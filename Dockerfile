@@ -18,6 +18,9 @@ ENV DEBIAN_FRONTEND=noninteractive
 # built: `man -w` reads the files directly.
 # libatomic1: Node 26.x from actions/setup-node exits 127 without it. python3-yaml: rust-fs-core's
 # ci-gate.sh and other CI scripts. cpio: rust-fs-bcachefs's kernel-oracle scripts.
+# packages.microsoft.com is only for installing powershell here, so its package is purged after,
+# which removes the apt source: on 2026-11-27 it answered 403 intermittently, and that failed
+# `apt-get update` in jobs that installed nothing from it. A job that wants it adds it itself.
 RUN rm -f /etc/dpkg/dpkg.cfg.d/excludes /usr/bin/man \
  && { dpkg-divert --quiet --remove --rename /usr/bin/man || true; } \
  && echo "man-db man-db/auto-update boolean false" | debconf-set-selections \
@@ -33,6 +36,7 @@ RUN rm -f /etc/dpkg/dpkg.cfg.d/excludes /usr/bin/man \
  && rm /tmp/packages-microsoft-prod.deb \
  && apt-get update \
  && apt-get install -y --no-install-recommends powershell \
+ && dpkg --purge packages-microsoft-prod \
  && rm -rf /var/lib/apt/lists/* \
  && mkdir -p /home/runner/.local/bin \
  && chown -R runner:runner /home/runner/.local
@@ -51,6 +55,9 @@ RUN set -e; export PATH="$PATH:/usr/sbin:/sbin"; \
     python3 -c "import yaml, venv"; \
     ldconfig -p | grep -q 'libatomic\.so\.1'; \
     man -w 8 mkfs.ntfs >/dev/null; \
+    if grep -rs 'packages\.microsoft\.com' /etc/apt/sources.list /etc/apt/sources.list.d; then \
+      echo "packages.microsoft.com is still an apt source" >&2; exit 1; \
+    fi; \
     test -x /home/runner/run.sh
 
 # The base image's CMD is /bin/bash; the pod spec sets no command, so the runner starts from here.
