@@ -7,6 +7,9 @@ with PyYAML, PowerShell, ntfs-3g, man pages). Everything is installed at build t
 pod runs `run.sh` and nothing else, so it never waits on an apt mirror. Add a tool a job needs
 here, not to a workflow's `sudo apt-get` or to the pod's startup.
 
+`packages.microsoft.com` is an apt source only while the image is built (for PowerShell). Jobs do
+not have it, so its outages cannot fail their `apt-get update`.
+
 Language toolchains (Go, Node, Rust, Helm) do not belong here: workflows use `setup-*` actions.
 
 The base image is pinned by tag and digest, and Dependabot bumps it. A pull request builds the
