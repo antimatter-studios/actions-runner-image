@@ -18,6 +18,10 @@ ENV DEBIAN_FRONTEND=noninteractive
 # built: `man -w` reads the files directly.
 # libatomic1: Node 26.x from actions/setup-node exits 127 without it. python3-yaml: rust-fs-core's
 # ci-gate.sh and other CI scripts. cpio: rust-fs-bcachefs's kernel-oracle scripts.
+# udev: fs-linux-test-harness's ci-setup-linux.sh runs `sudo udevadm` before it boots a KVM guest.
+# kmod, fdisk and acl are, like udev, in GitHub's ubuntu-24.04 image, and our jobs and tests call
+# them: `sudo modprobe` (rust-fs-fat, rust-fs-core), sfdisk (rust-fs-core's partition oracle),
+# setfacl (rust-fs-btrfs's ACL oracle).
 # packages.microsoft.com is only for installing powershell here, so its package is purged after,
 # which removes the apt source: on 2026-11-27 it answered 403 intermittently, and that failed
 # `apt-get update` in jobs that installed nothing from it. A job that wants it adds it itself.
@@ -34,6 +38,7 @@ RUN rm -f /etc/dpkg/dpkg.cfg.d/excludes /usr/bin/man \
       ca-certificates gnupg wget curl jq git git-lfs \
       unzip zip rsync file less gzip xz-utils zstd cpio \
       man-db ntfs-3g shellcheck \
+      udev kmod fdisk acl \
  && wget -q -O /tmp/packages-microsoft-prod.deb https://packages.microsoft.com/config/ubuntu/24.04/packages-microsoft-prod.deb \
  && dpkg -i /tmp/packages-microsoft-prod.deb \
  && rm /tmp/packages-microsoft-prod.deb \
@@ -58,6 +63,7 @@ USER runner
 # Fail the build, not a CI job, if a tool is missing.
 RUN set -e; export PATH="$PATH:/usr/sbin:/sbin"; \
     for t in cc c++ make cmake clang ld.lld gdb pkg-config python3 pwsh ntfsfix ntfsls ntfscat shellcheck gh \
+             udevadm modprobe lsmod sfdisk fdisk setfacl getfacl \
              jq git git-lfs curl wget gpg unzip zip rsync file less gzip xz zstd cpio man; do \
       command -v "$t" >/dev/null || { echo "missing: $t" >&2; exit 1; }; \
     done; \
@@ -67,6 +73,7 @@ RUN set -e; export PATH="$PATH:/usr/sbin:/sbin"; \
     ldconfig -p | grep -q 'libatomic\.so\.1'; \
     man -w 8 mkfs.ntfs >/dev/null; \
     gh --version; \
+    udevadm --version; \
     if grep -rsE 'packages\.microsoft\.com|cli\.github\.com' /etc/apt/sources.list /etc/apt/sources.list.d; then \
       echo "a build-only repository is still an apt source" >&2; exit 1; \
     fi; \
