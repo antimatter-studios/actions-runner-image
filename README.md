@@ -3,7 +3,7 @@
 `ghcr.io/antimatter-studios/actions-runner`: the image the ARC runner scale sets on the
 antimatter-vps cluster run. It is `ghcr.io/actions/actions-runner` plus the OS tools GitHub's
 `ubuntu-24.04` image preinstalls and our workflows expect (build-essential, clang, cmake, Python
-with PyYAML, PowerShell, GitHub CLI, ntfs-3g, man pages). Everything is installed at build time: a runner
+with PyYAML, PowerShell, GitHub CLI, ntfs-3g, udev, kmod, man pages). Everything is installed at build time: a runner
 pod runs `run.sh` and nothing else, so it never waits on an apt mirror. Add a tool a job needs
 here, not to a workflow's `sudo apt-get` or to the pod's startup.
 
