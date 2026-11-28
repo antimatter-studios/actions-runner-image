@@ -3,12 +3,13 @@
 `ghcr.io/antimatter-studios/actions-runner`: the image the ARC runner scale sets on the
 antimatter-vps cluster run. It is `ghcr.io/actions/actions-runner` plus the OS tools GitHub's
 `ubuntu-24.04` image preinstalls and our workflows expect (build-essential, clang, cmake, Python
-with PyYAML, PowerShell, ntfs-3g, man pages). Everything is installed at build time: a runner
+with PyYAML, PowerShell, GitHub CLI, ntfs-3g, man pages). Everything is installed at build time: a runner
 pod runs `run.sh` and nothing else, so it never waits on an apt mirror. Add a tool a job needs
 here, not to a workflow's `sudo apt-get` or to the pod's startup.
 
-`packages.microsoft.com` is an apt source only while the image is built (for PowerShell). Jobs do
-not have it, so its outages cannot fail their `apt-get update`.
+`packages.microsoft.com` (for PowerShell) and `cli.github.com/packages` (for `gh`) are apt sources
+only while the image is built. Jobs do not have them, so their outages cannot fail their
+`apt-get update`. The `gh` repository's keyring is pinned by SHA-256.
 
 Language toolchains (Go, Node, Rust, Helm) do not belong here: workflows use `setup-*` actions.
 

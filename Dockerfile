@@ -21,6 +21,9 @@ ENV DEBIAN_FRONTEND=noninteractive
 # packages.microsoft.com is only for installing powershell here, so its package is purged after,
 # which removes the apt source: on 2026-11-27 it answered 403 intermittently, and that failed
 # `apt-get update` in jobs that installed nothing from it. A job that wants it adds it itself.
+# gh comes from GitHub's own apt repository (cli/cli docs/install_linux.md); release jobs call it.
+# The keyring checksum is the one those docs publish, so a changed key fails this build. The
+# source and key are removed after the install, for the same reason as Microsoft's.
 RUN rm -f /etc/dpkg/dpkg.cfg.d/excludes /usr/bin/man \
  && { dpkg-divert --quiet --remove --rename /usr/bin/man || true; } \
  && echo "man-db man-db/auto-update boolean false" | debconf-set-selections \
@@ -37,6 +40,14 @@ RUN rm -f /etc/dpkg/dpkg.cfg.d/excludes /usr/bin/man \
  && apt-get update \
  && apt-get install -y --no-install-recommends powershell \
  && dpkg --purge packages-microsoft-prod \
+ && wget -q -O /tmp/githubcli.gpg https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+ && echo "6084d5d7bd8e288441e0e94fc6275570895da18e6751f70f057485dc2d1a811b  /tmp/githubcli.gpg" | sha256sum -c - \
+ && install -D -m 0644 /tmp/githubcli.gpg /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+ && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+      > /etc/apt/sources.list.d/github-cli.list \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends gh \
+ && rm /tmp/githubcli.gpg /etc/apt/sources.list.d/github-cli.list /etc/apt/keyrings/githubcli-archive-keyring.gpg \
  && rm -rf /var/lib/apt/lists/* \
  && mkdir -p /home/runner/.local/bin \
  && chown -R runner:runner /home/runner/.local
@@ -46,7 +57,7 @@ USER runner
 
 # Fail the build, not a CI job, if a tool is missing.
 RUN set -e; export PATH="$PATH:/usr/sbin:/sbin"; \
-    for t in cc c++ make cmake clang ld.lld gdb pkg-config python3 pwsh ntfsfix ntfsls ntfscat shellcheck \
+    for t in cc c++ make cmake clang ld.lld gdb pkg-config python3 pwsh ntfsfix ntfsls ntfscat shellcheck gh \
              jq git git-lfs curl wget gpg unzip zip rsync file less gzip xz zstd cpio man; do \
       command -v "$t" >/dev/null || { echo "missing: $t" >&2; exit 1; }; \
     done; \
@@ -55,8 +66,9 @@ RUN set -e; export PATH="$PATH:/usr/sbin:/sbin"; \
     python3 -c "import yaml, venv"; \
     ldconfig -p | grep -q 'libatomic\.so\.1'; \
     man -w 8 mkfs.ntfs >/dev/null; \
-    if grep -rs 'packages\.microsoft\.com' /etc/apt/sources.list /etc/apt/sources.list.d; then \
-      echo "packages.microsoft.com is still an apt source" >&2; exit 1; \
+    gh --version; \
+    if grep -rsE 'packages\.microsoft\.com|cli\.github\.com' /etc/apt/sources.list /etc/apt/sources.list.d; then \
+      echo "a build-only repository is still an apt source" >&2; exit 1; \
     fi; \
     test -x /home/runner/run.sh
 
