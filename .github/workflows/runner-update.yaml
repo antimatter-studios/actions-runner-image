@@ -1,0 +1,110 @@
+# GitHub stops sending jobs to a self-hosted runner some weeks after a newer actions/runner release.
+# This opens a PR the day a release appears, so the pinned base image does not fall that far behind.
+name: Update the runner version
+
+on:
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runner-update
+
+jobs:
+  update:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write # push the update branch
+      pull-requests: write # open the PR
+      actions: write # start the build on the update branch
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+      - name: Open a PR if a newer runner is released
+        shell: bash # for pipefail
+        run: |
+          current=$(sed -n 's#^FROM ghcr.io/actions/actions-runner:\([^@]*\)@.*#\1#p' Dockerfile)
+          test -n "$current"
+          latest=$(gh api repos/actions/runner/releases/latest --jq .tag_name)
+          latest=${latest#v}
+          if ! [[ $latest =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::unexpected actions/runner release tag: $latest"
+            exit 1
+          fi
+          newest=$(printf '%s\n%s\n' "$current" "$latest" | sort -V | tail -n 1)
+          if [ "$latest" = "$current" ] || [ "$newest" != "$latest" ]; then
+            echo "The image builds $current; the latest release is $latest. Nothing to do." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          branch="runner-update/$latest"
+          # Any state: a closed PR means someone rejected this version, so do not reopen it.
+          existing=$(gh pr list --head "$branch" --state all --json url --jq '.[0].url // ""')
+          if [ -z "$existing" ]; then
+            # Dependabot bumps the same line and may have got there first.
+            existing=$(gh pr list --state open --json url,title \
+              --jq "[.[] | select(.title | test(\"actions/actions-runner .* to ${latest//./[.]}( |\$)\"))][0].url // \"\"")
+          fi
+          if [ -n "$existing" ]; then
+            echo "$latest already has a PR: $existing" | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # An earlier run may have pushed the branch and then failed to open the PR.
+          if ! git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
+            # The base image can appear after the release. If so this fails and tomorrow's run retries.
+            digest=$(docker buildx imagetools inspect "ghcr.io/actions/actions-runner:$latest" --format '{{.Manifest.Digest}}')
+            [[ $digest =~ ^sha256:[0-9a-f]{64}$ ]]
+            sed -i "s#^FROM ghcr.io/actions/actions-runner:[^ ]*#FROM ghcr.io/actions/actions-runner:${latest}@${digest}#" Dockerfile
+            grep -qx "FROM ghcr.io/actions/actions-runner:${latest}@${digest}" Dockerfile
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git switch -c "$branch"
+            git commit -am "build(deps): update the actions runner to $latest"
+            git push origin "$branch"
+          fi
+
+          # A push made with GITHUB_TOKEN starts no workflow, but workflow_dispatch does. On a branch
+          # other than main the build runs its checks and publishes nothing.
+          gh workflow run release.yaml --ref "$branch"
+
+          cat > "$RUNNER_TEMP/body.md" <<BODY
+          Updates the runner in the base image from $current to $latest
+          ([release notes](https://github.com/actions/runner/releases/tag/v$latest)).
+          GitHub stops sending jobs to a runner some weeks after a newer release.
+
+          ## Check before merging
+
+          This workflow started **Build the runner image** on \`$branch\`. Merge only when that run
+          has passed. If GitHub also shows **Approve workflows to run** here, that is the same build
+          triggered by the pull request.
+
+          ## Image reference to pin after merge
+
+          The reference does not exist yet: the tag contains the commit SHA on \`main\`, and the
+          digest comes from the build that publishes it. After merging, open the **Build the runner
+          image** run for the merge commit on \`main\`. Its summary, and the log of its last step,
+          show the line to pin:
+
+              ghcr.io/antimatter-studios/actions-runner:$latest-<sha>@sha256:<digest>
+
+          Or from a terminal, once that run has finished:
+
+              id=\$(gh run list -R $GITHUB_REPOSITORY -w release.yaml -b main -e push -L 1 --json databaseId --jq '.[0].databaseId')
+              gh run view -R $GITHUB_REPOSITORY "\$id" --log | grep -o 'ghcr.io/antimatter-studios/actions-runner:[^ ]*@sha256:[0-9a-f]\{64\}' | tail -n 1
+
+          Pin it, digest included, everywhere the image is consumed (antimatter-vps:
+          \`src/githubActionsRunners.ts\`; homelab-server).
+          BODY
+          if ! gh pr create --base main --head "$branch" \
+              --title "build(deps): update the actions runner to $latest" \
+              --body-file "$RUNNER_TEMP/body.md" | tee -a "$GITHUB_STEP_SUMMARY"; then
+            echo "::error::Could not open the PR. GITHUB_TOKEN may only do that when 'Allow GitHub Actions to create and approve pull requests' is enabled in the organization and repository Actions settings. The branch $branch is pushed; open the PR by hand or enable the setting and run this again."
+            exit 1
+          fi
